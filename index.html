@@ -1,0 +1,1744 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz Interativo 9º Ano: Sala Multiplayer via QR Code</title>
+    <!-- Carregando Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Fonte Inter para máxima legibilidade à distância -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Tone.js para efeitos sonoros sintetizados sem URLs externas -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <!-- Canvas Confetti para comemoração nos acertos e pódio -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <!-- QRCode.js para geração automática do QR Code da sala -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9;
+            color: #0f172a;
+            overflow-x: hidden;
+        }
+
+        /* Animação de tremor horizontal para resposta incorreta */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            15%, 45%, 75% { transform: translateX(-10px); }
+            30%, 60%, 90% { transform: translateX(10px); }
+        }
+        .animate-shake {
+            animation: shake 0.55s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        /* Animação de pulso suave para resposta correta */
+        @keyframes popSuccess {
+            0% { transform: scale(1); }
+            40% { transform: scale(1.025); }
+            70% { transform: scale(0.995); }
+            100% { transform: scale(1); }
+        }
+        .animate-pop-success {
+            animation: popSuccess 0.45s ease-out forwards;
+        }
+
+        /* Entrada suave das telas e cartões */
+        @keyframes slideUpFade {
+            from {
+                opacity: 0;
+                transform: translateY(16px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .animate-slide-up {
+            animation: slideUpFade 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        /* Textura sutil de fundo claro para projeção sem reflexo */
+        .bg-light-classroom {
+            background-color: #f1f5f9;
+            background-image: radial-gradient(#cbd5e1 1.25px, transparent 1.25px);
+            background-size: 28px 28px;
+        }
+
+        /* Garante que o QR Code fique centralizado e nítido */
+        #qrcode-container img,
+        #qrcode-container canvas {
+            margin: 0 auto;
+            border-radius: 0.75rem;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-light-classroom text-slate-900 flex flex-col justify-between selection:bg-blue-600 selection:text-white">
+
+    <!-- Barra Superior Fixa (Alto Contraste Claro) -->
+    <header class="w-full border-b border-slate-300 bg-white/95 backdrop-blur-md sticky top-0 z-30 shadow-sm">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center shadow-md shadow-blue-600/20 shrink-0">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <span class="font-extrabold text-base sm:text-lg tracking-tight text-slate-900 block leading-none">
+                        9º Ano – Quiz ao Vivo
+                    </span>
+                    <span id="header-role-subtitle" class="text-xs text-slate-600 font-semibold hidden sm:inline">
+                        Sala de Aula Interativa • QR Code & Ranking
+                    </span>
+                </div>
+            </div>
+
+            <!-- Controles rápidos -->
+            <div class="flex items-center gap-2 sm:gap-3">
+                <span id="sync-status-badge" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Conectado
+                </span>
+
+                <button id="sound-toggle-btn" onclick="window.app.toggleSound()" title="Ativar ou desativar efeitos sonoros"
+                    class="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 text-sm font-bold flex items-center gap-2 transition active:scale-95 cursor-pointer">
+                    <span id="sound-icon">🔊</span>
+                    <span class="hidden md:inline" id="sound-label">Som Ligado</span>
+                </button>
+
+                <button id="switch-mode-btn" onclick="window.app.openModeSwitcher()"
+                    class="px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 text-sm font-bold transition active:scale-95 cursor-pointer">
+                    Trocar Modo
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Container Principal -->
+    <main class="flex-grow flex items-center justify-center p-4 sm:p-6 md:p-8">
+        <div class="w-full max-w-6xl">
+
+            <!-- ===================================================================== -->
+            <!-- 1. PAINEL DO PROFESSOR / PROJETOR (QR CODE + RANKING EM TEMPO REAL)   -->
+            <!-- ===================================================================== -->
+            <section id="teacher-dashboard" class="hidden animate-slide-up space-y-6">
+
+                <!-- Aviso de link local / iframe caso não esteja hospedado ainda -->
+                <div id="local-url-warning" class="hidden bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 flex items-start gap-3 text-amber-950 shadow-sm">
+                    <span class="text-2xl shrink-0">⚠️</span>
+                    <div class="text-sm sm:text-base font-medium">
+                        <strong>Dica para uso com celulares:</strong> Você está abrindo este arquivo localmente ou em uma janela privada. Para que a câmera do celular dos alunos abra o link do QR Code na sala de aula, publique este arquivo HTML em um endereço web (ex: GitHub Pages, Netlify ou Vercel).
+                    </div>
+                </div>
+
+                <!-- Grid Superior: QR Code & Controles da Sala (Esquerda) + Pódio Top 3 (Direita) -->
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+                    <!-- Cartão QR Code e Configurações da Sala -->
+                    <div class="lg:col-span-5 bg-white border border-slate-300 rounded-3xl p-6 sm:p-7 shadow-lg shadow-slate-300/40 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between gap-2 mb-4">
+                                <span class="px-3.5 py-1 rounded-full bg-blue-100 text-blue-800 font-extrabold text-xs sm:text-sm uppercase tracking-wide">
+                                    Painel do Professor
+                                </span>
+                                <button onclick="window.app.createNewRoom()"
+                                    class="text-xs sm:text-sm font-bold text-slate-600 hover:text-blue-700 underline cursor-pointer">
+                                    Gerar Nova Sala
+                                </button>
+                            </div>
+
+                            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 leading-tight mb-2">
+                                Escaneie para Entrar
+                            </h1>
+                            <p class="text-slate-600 text-sm sm:text-base font-medium mb-5">
+                                Aponte a câmera do celular para o QR Code, digite seu nome e responda às questões!
+                            </p>
+
+                            <!-- Caixa Branca Destacada com QR Code -->
+                            <div class="bg-slate-50 border-2 border-slate-300 rounded-2xl p-5 text-center mb-5">
+                                <div id="qrcode-container" class="bg-white p-3 rounded-2xl inline-block border border-slate-200 shadow-sm mb-3"></div>
+                                <div class="text-xs font-extrabold uppercase tracking-wider text-slate-500">Código da Sala</div>
+                                <div id="teacher-room-code" class="text-4xl sm:text-5xl font-black tracking-widest text-blue-700 my-1">
+                                    -----
+                                </div>
+                                <div class="mt-3 flex items-center justify-center gap-2">
+                                    <input id="student-join-url-input" type="text" readonly
+                                        class="w-full text-xs bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-600 font-mono truncate focus:outline-none">
+                                    <button onclick="window.app.copyJoinLink()" id="copy-link-btn"
+                                        class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shrink-0 transition active:scale-95 cursor-pointer">
+                                        Copiar Link
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Seletor de Módulo Sincronizado com os Celulares -->
+                            <div class="mb-5">
+                                <label for="teacher-module-select" class="block text-sm font-extrabold text-slate-800 mb-2">
+                                    Módulo Ativo da Sala:
+                                </label>
+                                <select id="teacher-module-select" onchange="window.app.changeRoomModule(this.value)"
+                                    class="w-full rounded-xl border-2 border-slate-300 bg-slate-50 px-4 py-3 text-base font-bold text-slate-900 focus:border-blue-600 focus:outline-none cursor-pointer">
+                                    <option value="ALL">Todas as 20 Questões (Revisão Completa)</option>
+                                    <option value="I">Parte I – Produção de Slides (12 questões)</option>
+                                    <option value="II">Parte II – Animações e GIFs (4 questões)</option>
+                                    <option value="III">Parte III – Compartilhamento de Músicas (4 questões)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Ações do Professor -->
+                        <div class="space-y-2.5 pt-2 border-t border-slate-200">
+                            <button onclick="window.app.openFinalPodiumModal()"
+                                class="w-full py-3.5 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base sm:text-lg shadow-md shadow-emerald-600/20 transition active:scale-95 flex items-center justify-center gap-2 cursor-pointer">
+                                <span>🏆 Encerrar & Mostrar Pódio Final</span>
+                            </button>
+
+                            <div class="grid grid-cols-2 gap-2.5">
+                                <button onclick="window.app.clearRoomPlayers()"
+                                    class="py-3 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-800 font-extrabold text-xs sm:text-sm transition active:scale-95 cursor-pointer">
+                                    🔄 Limpar Alunos
+                                </button>
+                                <button onclick="window.app.startSoloProjectorMode()"
+                                    class="py-3 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-extrabold text-xs sm:text-sm transition active:scale-95 cursor-pointer">
+                                    🖥️ Projeção Direta (Solo)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Coluna Direita: Pódio Top 3 + Lista Ao Vivo de Alunos -->
+                    <div class="lg:col-span-7 flex flex-col gap-6">
+
+                        <!-- Pódio Top 3 em Tempo Real -->
+                        <div class="bg-white border border-slate-300 rounded-3xl p-6 sm:p-7 shadow-lg shadow-slate-300/40">
+                            <div class="flex items-center justify-between gap-2 mb-5">
+                                <div>
+                                    <h2 class="text-xl sm:text-2xl font-black text-slate-900">
+                                        🏆 Líderes em Tempo Real
+                                    </h2>
+                                    <p class="text-xs sm:text-sm text-slate-600 font-medium">
+                                        Critério: maior nº de acertos (desempate pelo menor tempo)
+                                    </p>
+                                </div>
+                                <span id="connected-students-count" class="px-4 py-1.5 rounded-full bg-blue-600 text-white font-extrabold text-sm">
+                                    0 alunos
+                                </span>
+                            </div>
+
+                            <!-- 3 Cards do Pódio -->
+                            <div id="live-podium-grid" class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                                <!-- 1º Lugar -->
+                                <div class="rounded-2xl border-2 border-amber-400 bg-gradient-to-b from-amber-50 to-white p-4 text-center shadow-sm">
+                                    <div class="text-3xl mb-1">🥇</div>
+                                    <div class="text-xs font-extrabold uppercase text-amber-800">1º Lugar</div>
+                                    <div id="podium-1-name" class="text-lg font-black text-slate-900 truncate mt-1">Aguardando...</div>
+                                    <div id="podium-1-stats" class="text-sm font-bold text-amber-900 mt-1">—</div>
+                                </div>
+
+                                <!-- 2º Lugar -->
+                                <div class="rounded-2xl border-2 border-slate-300 bg-gradient-to-b from-slate-100 to-white p-4 text-center shadow-sm">
+                                    <div class="text-3xl mb-1">🥈</div>
+                                    <div class="text-xs font-extrabold uppercase text-slate-600">2º Lugar</div>
+                                    <div id="podium-2-name" class="text-lg font-black text-slate-900 truncate mt-1">Aguardando...</div>
+                                    <div id="podium-2-stats" class="text-sm font-bold text-slate-700 mt-1">—</div>
+                                </div>
+
+                                <!-- 3º Lugar -->
+                                <div class="rounded-2xl border-2 border-orange-300 bg-gradient-to-b from-orange-50 to-white p-4 text-center shadow-sm">
+                                    <div class="text-3xl mb-1">🥉</div>
+                                    <div class="text-xs font-extrabold uppercase text-orange-800">3º Lugar</div>
+                                    <div id="podium-3-name" class="text-lg font-black text-slate-900 truncate mt-1">Aguardando...</div>
+                                    <div id="podium-3-stats" class="text-sm font-bold text-orange-900 mt-1">—</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Placar Completo da Turma -->
+                        <div class="bg-white border border-slate-300 rounded-3xl p-6 sm:p-7 shadow-lg shadow-slate-300/40 flex-grow">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-lg sm:text-xl font-black text-slate-900">
+                                    📋 Progresso da Turma Ao Vivo
+                                </h3>
+                                <span id="finished-students-count" class="text-xs sm:text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
+                                    0 concluídos
+                                </span>
+                            </div>
+
+                            <!-- Lista de Alunos -->
+                            <div id="students-leaderboard-list" class="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                                <div class="text-center py-10 px-4 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50">
+                                    <div class="text-4xl mb-2">📱</div>
+                                    <p class="text-slate-700 font-bold text-base sm:text-lg">Nenhum aluno conectado ainda</p>
+                                    <p class="text-slate-500 text-sm mt-1">Peça para a turma ler o QR Code ao lado para começar!</p>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </section>
+
+            <!-- ===================================================================== -->
+            <!-- 2. TELA DE ENTRADA DO ALUNO (CELULAR AO ESCANEAR O QR CODE)           -->
+            <!-- ===================================================================== -->
+            <section id="student-join-screen" class="hidden animate-slide-up max-w-lg mx-auto bg-white border border-slate-300 rounded-3xl p-6 sm:p-9 shadow-xl shadow-slate-300/50">
+                <div class="text-center mb-6">
+                    <span class="inline-block px-3.5 py-1 rounded-full bg-blue-100 text-blue-800 font-extrabold text-xs uppercase tracking-wider mb-3">
+                        9º Ano • Quiz em Sala
+                    </span>
+                    <h1 class="text-2xl sm:text-3xl font-black text-slate-900 mb-2">
+                        Entrar no Quiz
+                    </h1>
+                    <p class="text-slate-600 text-sm sm:text-base font-medium">
+                        Digite seu nome para participar da disputa em tempo real!
+                    </p>
+                </div>
+
+                <form onsubmit="window.app.handleStudentJoin(event)" class="space-y-5">
+                    <div>
+                        <label for="student-room-input" class="block text-sm font-extrabold text-slate-800 mb-1.5">
+                            Código da Sala:
+                        </label>
+                        <input id="student-room-input" type="text" maxlength="8" required placeholder="Ex: 9ANO1"
+                            class="w-full rounded-2xl border-2 border-slate-300 bg-slate-50 px-4 py-3.5 text-xl font-black uppercase tracking-widest text-center text-blue-700 focus:border-blue-600 focus:bg-white focus:outline-none">
+                    </div>
+
+                    <div>
+                        <label for="student-name-input" class="block text-sm font-extrabold text-slate-800 mb-1.5">
+                            Seu Nome (ou Nome e Sobrenome):
+                        </label>
+                        <input id="student-name-input" type="text" maxlength="28" required placeholder="Digite seu nome..."
+                            class="w-full rounded-2xl border-2 border-slate-300 bg-slate-50 px-4 py-4 text-lg font-bold text-slate-900 focus:border-blue-600 focus:bg-white focus:outline-none">
+                    </div>
+
+                    <div id="student-join-error" class="hidden rounded-xl bg-rose-50 border border-rose-300 p-3 text-rose-800 text-sm font-bold text-center"></div>
+
+                    <button type="submit" id="student-join-submit-btn"
+                        class="w-full py-4 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xl shadow-lg shadow-blue-600/25 transition active:scale-95 flex items-center justify-center gap-2 cursor-pointer">
+                        <span>Entrar no Quiz 🚀</span>
+                    </button>
+                </form>
+            </section>
+
+            <!-- ===================================================================== -->
+            <!-- 3. TELA DO QUIZ (FUNCIONA TANTO NO CELULAR QUANTO NO MODO SOLO)       -->
+            <!-- ===================================================================== -->
+            <section id="quiz-screen" class="hidden max-w-4xl mx-auto">
+                <!-- Barra de Status, Placar e Progresso -->
+                <div class="bg-white border border-slate-300 rounded-3xl p-4 sm:p-6 mb-5 shadow-md shadow-slate-300/40">
+                    <div class="flex flex-wrap items-center justify-between gap-2.5 mb-3">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span id="player-pill" class="hidden px-3 py-1 rounded-xl bg-slate-900 text-white font-extrabold text-xs sm:text-sm">
+                                👤 Aluno
+                            </span>
+                            <span id="section-badge" class="px-3.5 py-1 rounded-xl bg-blue-100 border border-blue-300 text-blue-900 font-extrabold text-xs sm:text-sm">
+                                PARTE I – APRESENTAÇÃO DIGITAL: PRODUÇÃO DE SLIDES
+                            </span>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <div class="px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 font-extrabold text-sm flex items-center gap-1">
+                                <span>✓</span>
+                                <span id="score-correct" class="text-emerald-950 text-base">0</span>
+                            </div>
+                            <div class="px-3 py-1 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 font-extrabold text-sm flex items-center gap-1">
+                                <span>✕</span>
+                                <span id="score-wrong" class="text-rose-950 text-base">0</span>
+                            </div>
+                            <div class="px-3 py-1 rounded-xl bg-slate-100 border border-slate-300 text-slate-800 font-extrabold text-sm">
+                                <span id="question-counter" class="text-blue-700">1 / 20</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Barra de Progresso -->
+                    <div class="w-full h-3 bg-slate-200 rounded-full overflow-hidden p-0.5">
+                        <div id="progress-bar" class="h-full bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full transition-all duration-500 ease-out" style="width: 5%"></div>
+                    </div>
+                </div>
+
+                <!-- Card da Pergunta e Alternativas -->
+                <div id="question-card" class="bg-white border border-slate-300 rounded-3xl p-5 sm:p-8 md:p-10 shadow-xl shadow-slate-300/40">
+                    <!-- Enunciado com Numeração Dinâmica Sequencial (1., 2., 3...) -->
+                    <h2 id="question-text" class="text-xl sm:text-2xl md:text-[1.55rem] font-extrabold text-slate-900 leading-snug mb-6">
+                        Carregando pergunta...
+                    </h2>
+
+                    <!-- Lista de Alternativas (A–E) -->
+                    <div id="options-container" class="space-y-3 sm:space-y-3.5">
+                        <!-- Botões renderizados dinamicamente -->
+                    </div>
+
+                    <!-- Card de Explicação Pedagógica -->
+                    <div id="feedback-box" class="hidden mt-6 rounded-2xl p-4 sm:p-6 border-2 animate-slide-up">
+                        <div class="flex items-start gap-3.5">
+                            <div id="feedback-icon" class="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 text-xl font-black">
+                            </div>
+                            <div class="flex-grow">
+                                <h3 id="feedback-title" class="text-base sm:text-xl font-black mb-1"></h3>
+                                <p id="feedback-comment" class="text-sm sm:text-lg text-slate-800 font-medium leading-relaxed"></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Botão Próxima Questão -->
+                    <div id="next-btn-container" class="hidden mt-6 flex flex-col sm:flex-row items-center justify-between gap-3 animate-slide-up">
+                        <span class="text-xs text-slate-500 font-semibold hidden sm:inline">
+                            Atalho: pressione <kbd class="px-2 py-0.5 bg-slate-100 border border-slate-300 rounded text-slate-700 font-bold">Enter</kbd>
+                        </span>
+                        <button id="next-btn" onclick="window.app.nextQuestion()"
+                            class="w-full sm:w-auto px-8 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-lg sm:text-xl shadow-lg shadow-blue-600/25 transition transform hover:-translate-y-0.5 active:scale-95 flex items-center justify-center gap-2 cursor-pointer">
+                            <span id="next-btn-text">Próxima Questão →</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ===================================================================== -->
+            <!-- 4. TELA DE RESULTADO FINAL DO ALUNO / MODO SOLO                       -->
+            <!-- ===================================================================== -->
+            <section id="result-screen" class="hidden animate-slide-up max-w-3xl mx-auto bg-white border border-slate-300 rounded-3xl p-6 sm:p-10 shadow-xl shadow-slate-300/50 text-center">
+                <div id="result-emoji" class="text-6xl sm:text-7xl mb-3">🏆</div>
+                <h2 id="result-heading" class="text-2xl sm:text-4xl font-black text-slate-900 mb-2">
+                    Quiz Concluído!
+                </h2>
+                <p id="result-subtitle" class="text-base sm:text-xl text-slate-600 font-medium mb-6">
+                    Seu resultado já foi enviado para o telão do professor!
+                </p>
+
+                <!-- Posição Ao Vivo no Ranking da Sala (visível no modo aluno) -->
+                <div id="student-live-rank-banner" class="hidden mb-7 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-700 text-white shadow-lg">
+                    <div class="text-xs sm:text-sm font-bold uppercase tracking-wider text-blue-100">Sua Posição na Sala Agora</div>
+                    <div id="student-live-rank-text" class="text-3xl sm:text-4xl font-black mt-1">
+                        1º Lugar! 🥇
+                    </div>
+                    <div id="student-live-rank-sub" class="text-xs sm:text-sm text-blue-100 mt-1">
+                        Aguardando os colegas terminarem...
+                    </div>
+                </div>
+
+                <!-- Cards de Estatísticas -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-8">
+                    <div class="bg-emerald-50 border-2 border-emerald-400 rounded-2xl p-4">
+                        <div class="text-emerald-800 font-extrabold text-xs sm:text-sm uppercase mb-1">Acertos</div>
+                        <div id="final-correct" class="text-3xl sm:text-4xl font-black text-emerald-700">0</div>
+                    </div>
+
+                    <div class="bg-rose-50 border-2 border-rose-400 rounded-2xl p-4">
+                        <div class="text-rose-800 font-extrabold text-xs sm:text-sm uppercase mb-1">Erros</div>
+                        <div id="final-wrong" class="text-3xl sm:text-4xl font-black text-rose-700">0</div>
+                    </div>
+
+                    <div class="bg-blue-50 border-2 border-blue-400 rounded-2xl p-4">
+                        <div class="text-blue-800 font-extrabold text-xs sm:text-sm uppercase mb-1">Nota %</div>
+                        <div id="final-percent" class="text-3xl sm:text-4xl font-black text-blue-700">0%</div>
+                    </div>
+
+                    <div class="bg-slate-100 border-2 border-slate-300 rounded-2xl p-4">
+                        <div class="text-slate-700 font-extrabold text-xs sm:text-sm uppercase mb-1">Tempo</div>
+                        <div id="final-time" class="text-2xl sm:text-3xl font-black text-slate-900 mt-1">0s</div>
+                    </div>
+                </div>
+
+                <!-- Botões de Ação -->
+                <div id="result-actions" class="flex flex-col sm:flex-row items-center justify-center gap-3">
+                    <button id="solo-restart-btn" onclick="window.app.restartSoloQuiz()"
+                        class="hidden w-full sm:w-auto px-8 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-lg shadow-lg transition active:scale-95 cursor-pointer">
+                        🔄 Refazer Quiz (Nova Ordem)
+                    </button>
+                    <button onclick="window.app.backToTeacherDashboard()"
+                        class="w-full sm:w-auto px-8 py-4 rounded-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300 text-slate-800 font-extrabold text-lg transition active:scale-95 cursor-pointer">
+                        📊 Ir para Painel do Projetor
+                    </button>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- ===================================================================== -->
+    <!-- MODAL DO PÓDIO FINAL DE CELEBRAÇÃO (PROJETOR)                         -->
+    <!-- ===================================================================== -->
+    <div id="podium-modal" class="hidden fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+        <div class="bg-white border-2 border-slate-300 rounded-3xl max-w-4xl w-full p-6 sm:p-10 shadow-2xl animate-slide-up text-center my-auto">
+            <span class="inline-block px-4 py-1 rounded-full bg-amber-100 text-amber-900 font-extrabold text-sm uppercase tracking-wider mb-3">
+                Resultado Oficial • 9º Ano
+            </span>
+            <h2 class="text-3xl sm:text-5xl font-black text-slate-900 mb-2">
+                🎉 Pódio dos Campeões! 🎉
+            </h2>
+            <p class="text-slate-600 text-base sm:text-xl font-medium mb-8">
+                Parabéns a todos os estudantes que participaram da revisão!
+            </p>
+
+            <!-- Pódio Visual em Degraus -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end max-w-3xl mx-auto mb-8">
+                <!-- 2º Lugar -->
+                <div class="order-2 sm:order-1 bg-slate-100 border-2 border-slate-300 rounded-3xl p-5 sm:pb-8 shadow-md">
+                    <div class="text-5xl mb-2">🥈</div>
+                    <div class="text-sm font-black uppercase text-slate-600">2º Lugar</div>
+                    <div id="modal-podium-2-name" class="text-xl sm:text-2xl font-black text-slate-900 truncate mt-1">—</div>
+                    <div id="modal-podium-2-score" class="text-base font-extrabold text-blue-700 mt-1">0 acertos</div>
+                    <div id="modal-podium-2-time" class="text-xs font-bold text-slate-500 mt-0.5">—</div>
+                </div>
+
+                <!-- 1º Lugar (Mais alto) -->
+                <div class="order-1 sm:order-2 bg-gradient-to-b from-amber-100 via-amber-50 to-white border-4 border-amber-400 rounded-3xl p-6 sm:pb-12 shadow-xl">
+                    <div class="text-6xl mb-2">🥇</div>
+                    <div class="text-sm font-black uppercase text-amber-800">1º Lugar • Campeão</div>
+                    <div id="modal-podium-1-name" class="text-2xl sm:text-3xl font-black text-slate-900 truncate mt-1">—</div>
+                    <div id="modal-podium-1-score" class="text-lg font-black text-emerald-700 mt-1">0 acertos</div>
+                    <div id="modal-podium-1-time" class="text-xs font-bold text-slate-600 mt-0.5">—</div>
+                </div>
+
+                <!-- 3º Lugar -->
+                <div class="order-3 bg-orange-50 border-2 border-orange-300 rounded-3xl p-5 sm:pb-6 shadow-md">
+                    <div class="text-5xl mb-2">🥉</div>
+                    <div class="text-sm font-black uppercase text-orange-800">3º Lugar</div>
+                    <div id="modal-podium-3-name" class="text-xl sm:text-2xl font-black text-slate-900 truncate mt-1">—</div>
+                    <div id="modal-podium-3-score" class="text-base font-extrabold text-orange-800 mt-1">0 acertos</div>
+                    <div id="modal-podium-3-time" class="text-xs font-bold text-slate-500 mt-0.5">—</div>
+                </div>
+            </div>
+
+            <div class="flex flex-col sm:flex-row justify-center gap-3">
+                <button onclick="window.app.firePodiumConfetti()"
+                    class="px-6 py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-base sm:text-lg transition active:scale-95 cursor-pointer">
+                    🎊 Mais Confetes!
+                </button>
+                <button onclick="window.app.closePodiumModal()"
+                    class="px-8 py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-base sm:text-lg transition active:scale-95 cursor-pointer">
+                    Fechar Pódio
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- MODAL DE TROCA DE MODO (PROFESSOR / ALUNO / SOLO)                     -->
+    <!-- ===================================================================== -->
+    <div id="mode-modal" class="hidden fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white border border-slate-300 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl animate-slide-up">
+            <h3 class="text-2xl font-black text-slate-900 mb-2 text-center">Escolher Modo de Uso</h3>
+            <p class="text-slate-600 text-sm sm:text-base font-medium mb-6 text-center">
+                Selecione como este dispositivo será utilizado na aula:
+            </p>
+            <div class="space-y-3">
+                <button onclick="window.app.switchToTeacher()"
+                    class="w-full p-4 rounded-2xl border-2 border-blue-600 bg-blue-50 hover:bg-blue-100 text-left transition cursor-pointer">
+                    <div class="font-black text-lg text-blue-950">🖥️ Painel do Professor / Projetor</div>
+                    <div class="text-xs sm:text-sm text-blue-800 font-medium">Exibe o QR Code da sala e o ranking ao vivo da turma.</div>
+                </button>
+
+                <button onclick="window.app.switchToStudent()"
+                    class="w-full p-4 rounded-2xl border-2 border-emerald-600 bg-emerald-50 hover:bg-emerald-100 text-left transition cursor-pointer">
+                    <div class="font-black text-lg text-emerald-950">📱 Sou Aluno (Responder no Celular)</div>
+                    <div class="text-xs sm:text-sm text-emerald-800 font-medium">Digite o código da sala e seu nome para jogar.</div>
+                </button>
+
+                <button onclick="window.app.startSoloProjectorMode()"
+                    class="w-full p-4 rounded-2xl border-2 border-slate-300 bg-slate-50 hover:bg-slate-100 text-left transition cursor-pointer">
+                    <div class="font-black text-lg text-slate-900">🎯 Projeção Direta (Sem Celulares)</div>
+                    <div class="text-xs sm:text-sm text-slate-600 font-medium">Responde às questões diretamente no telão com a turma.</div>
+                </button>
+            </div>
+            <button onclick="window.app.closeModeSwitcher()"
+                class="w-full mt-5 py-3 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-base transition cursor-pointer">
+                Cancelar
+            </button>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- SCRIPT PRINCIPAL COM FIREBASE FIRESTORE REAL-TIME                     -->
+    <!-- ===================================================================== -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import {
+            getFirestore,
+            doc,
+            setDoc,
+            getDoc,
+            updateDoc,
+            deleteDoc,
+            onSnapshot,
+            collection,
+            getDocs
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // ================= BANCO DE 20 QUESTÕES EXATAS (9º ANO) =================
+        const LETTERS = ["A", "B", "C", "D", "E"];
+
+        const ALL_QUESTIONS = [
+            // PARTE I – APRESENTAÇÃO DIGITAL: PRODUÇÃO DE SLIDES (12 Questões)
+            {
+                part: "I",
+                partTitle: "PARTE I – APRESENTAÇÃO DIGITAL: PRODUÇÃO DE SLIDES",
+                badgeStyle: "bg-blue-100 border-blue-300 text-blue-900",
+                question: "Um estudante recebeu a tarefa de preparar uma apresentação sobre os impactos das redes sociais na sociedade. Antes de escolher cores, imagens e fontes, qual decisão deve tomar?",
+                options: [
+                    "Definir quantas animações serão utilizadas em cada slide.",
+                    "Escolher um modelo pronto e preencher todos os espaços disponíveis.",
+                    "Identificar o objetivo da apresentação e o público que deseja alcançar.",
+                    "Selecionar imagens que chamem atenção, independentemente do assunto.",
+                    "Escrever todo o conteúdo antes de decidir sua organização."
+                ],
+                correctIndex: 2,
+                explanation: "Todo planejamento eficaz começa definindo o objetivo da apresentação e quem é o público-alvo, para só depois escolher a linguagem e os elementos visuais."
+            },
+            {
+                part: "I",
+                partTitle: "PARTE I – APRESENTAÇÃO DIGITAL: PRODUÇÃO DE SLIDES",
+                badgeStyle: "bg-blue-100 border-blue-300 text-blue-900",
+                question: "Durante a produção de uma apresentação, um aluno coloca parágrafos inteiros em todos os slides. Qual é o principal problema dessa escolha?",
+                options: [
+                    "O excesso de texto dificulta a leitura e a compreensão das ideias principais.",
+                    "Os slides passam a ocupar mais espaço na memória do computador.",
+                    "A apresentação deixa de permitir a utilização de imagens e gráficos.",
+                    "O programa passa a apresentar erros durante a exibição dos slides.",
+                    "O conteúdo escrito não pode ser utilizado em apresentações escolares."
+                ],
+                correctIndex: 0,
+                explanation: "Slides devem conter tópicos curtos e palavras-chave; blocos longos de texto cansam o público e desviam a atenção da fala do apresentador."
+            },
+            {
+                part: "I",
+                partTitle: "PARTE I – APRESENTAÇÃO DIGITAL: PRODUÇÃO DE SLIDES",
+                badgeStyle: "bg-blue-100 border-blue-300 text-blue-900",
+                question: "Uma apresentação possui fundo azul-escuro e textos em azul-marinho. Embora as informações estejam corretas, o público tem dificuldade para ler. Qual elemento do design precisa ser revisto?",
+                options: [
+                    "A quantidade de slides utilizados na apresentação.",
+                    "A ordem dos tópicos apresentados ao público.",
+                    "O conteúdo da conclusão da apresentação.",
+                    "A duração total da apresentação.",
+                    "O contraste entre o texto e o fundo."
+                ],
+                correctIndex: 4,
+                explanation: "Cores muito próximas (como azul-escuro e azul-marinho) têm baixo contraste, prejudicando a legibilidade, especialmente em projetores."
+            },
+            {
+                part: "I",
+                partTitle: "PARTE I – APRESENTAÇÃO DIGITAL: PRODUÇÃO DE SLIDES",
+                badgeStyle: "bg-blue-100 border-blue-300 text-blue-900",
+                question: "Uma estudante precisa apresentar os resultados de uma pesquisa sobre a preferência musical de 100 alunos. Ela deseja demonstrar visualmente a quantidade de estudantes que escolheu cada gênero musical. Qual recurso seria mais adequado?",
+                options: [
+                    "Inserir um parágrafo com todas as respostas individuais.",
+                    "Utilizar um gráfico que represente os dados coletados.",
+                    "Distribuir os resultados em vários slides sem organização.",
+                    "Substituir os números por imagens decorativas.",
+                    "Apresentar somente o nome dos gêneros musicais pesquisados."
+                ],
+                correctIndex: 1,
+                explanation: "Gráficos transformam dados numéricos em comparação visual rápida, facilitando a interpretação imediata dos resultados pelo público."
+            },
+            {
+                part: "I",
+                partTitle: "PARTE I – APRESENTAÇÃO DIGITAL: PRODUÇÃO DE SLIDES",
+                badgeStyle: "bg-blue-100 border-blue-300 text-blue-900",
+                question: "Um grupo decidiu inserir um vídeo de três minutos em uma apresentação de cinco minutos. O vídeo é interessante, mas não possui relação direta com o tema. Qual avaliação é mais adequada?",
+                options: [
+                    "O vídeo deve permanecer porque recursos multimídia sempre melhoram apresentações.",
+                    "O vídeo deve ser substituído por uma animação com maior duração.",
+                    "O tempo do vídeo deve ser aumentado para chamar mais atenção.",
+                    "O recurso deve ser retirado ou substituído por outro relacionado ao assunto.",
+                    "O vídeo deve ser colocado em todos os slides para manter a identidade visual."
+                ],
+                correctIndex: 3,
+                explanation: "Recursos multimídia devem complementar o tema e respeitar o tempo da apresentação; vídeos sem relação dispersam a plateia e consomem tempo valioso."
+            },
+            {
+                part: "I",
+                partTitle: "PARTE I – APRESENTAÇÃO DIGITAL: PRODUÇÃO DE SLIDES",
+                badgeStyle: "bg-blue-100 border-blue-300 text-blue-900",
+                question: "Qual conjunto de informações é mais apropriado para um slide de introdução?",
+                options: [
+                    "Referências bibliográficas, resultados e agradecimentos.",
+                    "Imagens decorativas, efeitos de transição e créditos musicais.",
+                    "Tema da apresentação, contextualização e objetivos.",
+                    "Todas as informações detalhadas que serão explicadas nos slides seguintes.",
+                    "Apenas o nome do estudante e a data de apresentação."
+                ],
+                correctIndex: 2,
+                explanation: "A introdução situa o público sobre o assunto tratado, mostra sua relevância e apresenta os objetivos que serão desenvolvidos."
+            },
+            {
+                part: "I",
+                partTitle: "PARTE I – APRESENTAÇÃO DIGITAL: PRODUÇÃO DE SLIDES",
+                badgeStyle: "bg-blue-100 border-blue-300 text-blue-900",
+                question: "Uma apresentação possui informações corretas, mas começa com a conclusão, apresenta os exemplos depois dos agradecimentos e termina com a introdução. Qual aspecto precisa ser melhorado?",
+                options: [
+                    "A sequência lógica e a organização dos conteúdos.",
+                    "A quantidade de imagens utilizadas em cada página.",
+                    "A escolha do programa utilizado para criar os slides.",
+                    "A resolução dos arquivos inseridos na apresentação.",
+                    "A quantidade de efeitos visuais entre os slides."
+                ],
+                correctIndex: 0,
+                explanation: "Uma boa apresentação segue uma estrutura lógica (introdução, desenvolvimento com exemplos e conclusão) para que o raciocínio faça sentido."
+            },
+            {
+                part: "I",
+                partTitle: "PARTE I – APRESENTAÇÃO DIGITAL: PRODUÇÃO DE SLIDES",
+                badgeStyle: "bg-blue-100 border-blue-300 text-blue-900",
+                question: "Um aluno está desenvolvendo uma apresentação sobre mudanças climáticas. Ele utiliza fotografias, gráficos e pequenos vídeos. Qual critério deve orientar a escolha desses elementos?",
+                options: [
+                    "A quantidade de cores presentes em cada imagem.",
+                    "A preferência pessoal do estudante por determinados efeitos.",
+                    "O tamanho dos arquivos inseridos na apresentação.",
+                    "A possibilidade de utilizar o maior número de recursos disponíveis.",
+                    "A relação dos recursos visuais com as informações apresentadas."
+                ],
+                correctIndex: 4,
+                explanation: "Elementos visuais não são apenas enfeites: precisam ter conexão direta com o conteúdo explicado para reforçar a compreensão."
+            },
+            {
+                part: "I",
+                partTitle: "PARTE I – APRESENTAÇÃO DIGITAL: PRODUÇÃO DE SLIDES",
+                badgeStyle: "bg-blue-100 border-blue-300 text-blue-900",
+                question: "Durante uma apresentação, um estudante fica de costas para o público e lê integralmente o texto de cada slide. Qual mudança contribuiria para melhorar sua comunicação?",
+                options: [
+                    "Aumentar o tamanho dos textos para facilitar a leitura.",
+                    "Dominar o conteúdo e utilizar os slides como apoio à explicação.",
+                    "Acrescentar mais parágrafos para evitar esquecimentos.",
+                    "Diminuir a quantidade de pausas durante a leitura.",
+                    "Substituir a explicação oral por uma sequência de vídeos."
+                ],
+                correctIndex: 1,
+                explanation: "O apresentador deve manter contato visual com a plateia e usar os slides apenas como roteiro visual, explicando o assunto com suas próprias palavras."
+            },
+            {
+                part: "I",
+                partTitle: "PARTE I – APRESENTAÇÃO DIGITAL: PRODUÇÃO DE SLIDES",
+                badgeStyle: "bg-blue-100 border-blue-300 text-blue-900",
+                question: "Uma equipe está criando uma apresentação com 15 slides. Em cada um, utiliza uma fonte diferente, cores sem relação entre si e estilos variados. Qual princípio de design está sendo prejudicado?",
+                options: [
+                    "A precisão das informações apresentadas.",
+                    "A quantidade de conteúdo desenvolvido.",
+                    "A compatibilidade entre os arquivos utilizados.",
+                    "A consistência visual da apresentação.",
+                    "A possibilidade de inserir elementos multimídia."
+                ],
+                correctIndex: 3,
+                explanation: "Manter uma paleta de cores e tipografia padronizadas garante harmonia, profissionalismo e consistência visual ao longo de todos os slides."
+            },
+            {
+                part: "I",
+                partTitle: "PARTE I – APRESENTAÇÃO DIGITAL: PRODUÇÃO DE SLIDES",
+                badgeStyle: "bg-blue-100 border-blue-300 text-blue-900",
+                question: "Um estudante utiliza uma fonte muito pequena em seus slides porque deseja colocar todas as informações em uma única página. Qual seria a solução mais adequada?",
+                options: [
+                    "Diminuir ainda mais o tamanho da fonte.",
+                    "Utilizar cores diferentes para cada parágrafo.",
+                    "Resumir as informações e distribuir os tópicos em outros slides.",
+                    "Retirar todas as imagens e manter os textos.",
+                    "Aumentar a velocidade de transição dos slides."
+                ],
+                correctIndex: 2,
+                explanation: "Sintetizar as ideias em tópicos e dividir o conteúdo em mais slides mantém o tamanho da fonte legível para quem está longe da tela."
+            },
+            {
+                part: "I",
+                partTitle: "PARTE I – APRESENTAÇÃO DIGITAL: PRODUÇÃO DE SLIDES",
+                badgeStyle: "bg-blue-100 border-blue-300 text-blue-900",
+                question: "Durante uma exposição, o apresentador percebe que o público está distraído. Qual estratégia pode ajudar a recuperar a participação dos ouvintes?",
+                options: [
+                    "Fazer perguntas relacionadas ao tema e estabelecer contato visual.",
+                    "Ler os textos dos slides com maior velocidade.",
+                    "Evitar pausas e continuar falando sem interrupções.",
+                    "Utilizar efeitos de transição em todas as páginas.",
+                    "Acrescentar informações que não estavam previstas no planejamento."
+                ],
+                correctIndex: 0,
+                explanation: "Interagir com o público por meio de perguntas e olhar para os ouvintes cria conexão e retoma imediatamente o engajamento."
+            },
+
+            // PARTE II – PRODUÇÃO DE ANIMAÇÕES E GIFs (4 Questões)
+            {
+                part: "II",
+                partTitle: "PARTE II – PRODUÇÃO DE ANIMAÇÕES E GIFs",
+                badgeStyle: "bg-purple-100 border-purple-300 text-purple-900",
+                question: "Uma animação mostra um personagem caminhando. Na realidade, foram utilizadas várias imagens estáticas com pequenas mudanças de posição, exibidas rapidamente. Qual princípio explica esse efeito?",
+                options: [
+                    "A combinação de sons com imagens fixas.",
+                    "A utilização de uma única fotografia em diferentes tamanhos.",
+                    "A transformação automática de fotografias em vídeos.",
+                    "A sobreposição de textos em diferentes camadas.",
+                    "A sequência rápida de imagens que cria a ilusão de movimento."
+                ],
+                correctIndex: 4,
+                explanation: "O princípio básico da animação é exibir quadros (frames) estáticos em sequência rápida, criando no olho humano a sensação de movimento contínuo."
+            },
+            {
+                part: "II",
+                partTitle: "PARTE II – PRODUÇÃO DE ANIMAÇÕES E GIFs",
+                badgeStyle: "bg-purple-100 border-purple-300 text-purple-900",
+                question: "Durante a criação de um GIF, um estudante organiza imagens em diferentes camadas, permitindo combinar elementos visuais. O que caracteriza a sobreposição de imagens nesse processo?",
+                options: [
+                    "A substituição de todas as imagens por um único arquivo de texto.",
+                    "A combinação de elementos visuais em diferentes camadas ou posições.",
+                    "A transformação obrigatória das imagens em arquivos de áudio.",
+                    "A redução da quantidade de quadros utilizados na animação.",
+                    "A exclusão das imagens anteriores após cada alteração."
+                ],
+                correctIndex: 1,
+                explanation: "Trabalhar com camadas (layers) permite sobrepor personagens, cenários e efeitos de forma independente para compor cada quadro da animação."
+            },
+            {
+                part: "II",
+                partTitle: "PARTE II – PRODUÇÃO DE ANIMAÇÕES E GIFs",
+                badgeStyle: "bg-purple-100 border-purple-300 text-purple-900",
+                question: "Um estudante precisa criar uma animação curta para utilizar em uma página da internet. Ele escolhe o formato GIF. Qual característica diferencia esse formato de um vídeo convencional?",
+                options: [
+                    "O GIF permite armazenar exclusivamente imagens sem movimento.",
+                    "O GIF exige uma conexão permanente para ser reproduzido.",
+                    "O GIF só pode ser criado utilizando linguagens de programação.",
+                    "O GIF pode apresentar uma sequência animada de imagens e geralmente não possui áudio.",
+                    "O GIF sempre apresenta qualidade superior à de um vídeo."
+                ],
+                correctIndex: 3,
+                explanation: "Arquivos GIF armazenam vários quadros em sequência (geralmente em loop contínuo) e não suportam faixa de áudio, ao contrário dos vídeos."
+            },
+            {
+                part: "II",
+                partTitle: "PARTE II – PRODUÇÃO DE ANIMAÇÕES E GIFs",
+                badgeStyle: "bg-purple-100 border-purple-300 text-purple-900",
+                question: "Antes de produzir uma animação para um trabalho escolar, um estudante procura imagens na internet. Qual cuidado deve ter ao selecionar esse material?",
+                options: [
+                    "Escolher somente imagens com resolução máxima.",
+                    "Utilizar qualquer imagem encontrada, desde que seja gratuita para visualizar.",
+                    "Verificar a licença e as condições de utilização das imagens.",
+                    "Retirar a identificação do autor para evitar informações desnecessárias.",
+                    "Alterar as cores das imagens para dispensar a autorização de uso."
+                ],
+                correctIndex: 2,
+                explanation: "Mesmo imagens disponíveis na internet possuem direitos autorais; é essencial checar as licenças de uso (como Creative Commons) e dar os devidos créditos."
+            },
+
+            // PARTE III – COMPARTILHAMENTO DE MÚSICAS PREFERIDAS (4 Questões)
+            {
+                part: "III",
+                partTitle: "PARTE III – COMPARTILHAMENTO DE MÚSICAS PREFERIDAS",
+                badgeStyle: "bg-emerald-100 border-emerald-300 text-emerald-900",
+                question: "Um grupo de amigos utiliza uma plataforma de streaming para montar uma playlist em conjunto. Cada participante pode adicionar músicas à lista. Como essa prática é denominada?",
+                options: [
+                    "Playlist colaborativa.",
+                    "Reprodução individual.",
+                    "Download automatizado.",
+                    "Edição de arquivos musicais.",
+                    "Transmissão de rádio convencional."
+                ],
+                correctIndex: 0,
+                explanation: "Playlists colaborativas permitem que vários usuários autorizados adicionem, removam ou reordenem faixas em uma mesma lista compartilhada."
+            },
+            {
+                part: "III",
+                partTitle: "PARTE III – COMPARTILHAMENTO DE MÚSICAS PREFERIDAS",
+                badgeStyle: "bg-emerald-100 border-emerald-300 text-emerald-900",
+                question: "Um estudante deseja compartilhar uma música protegida por direitos autorais com seus colegas. Qual procedimento é mais adequado?",
+                options: [
+                    "Baixar a música de qualquer site e enviar o arquivo para todos.",
+                    "Retirar o nome do artista antes de compartilhar.",
+                    "Gravar a música e publicar em uma conta pessoal.",
+                    "Distribuir cópias da música sem verificar as permissões.",
+                    "Compartilhar o link da música em uma plataforma autorizada."
+                ],
+                correctIndex: 4,
+                explanation: "Compartilhar o link oficial de plataformas de streaming autorizadas respeita os direitos autorais e remunera devidamente os criadores."
+            },
+            {
+                part: "III",
+                partTitle: "PARTE III – COMPARTILHAMENTO DE MÚSICAS PREFERIDAS",
+                badgeStyle: "bg-emerald-100 border-emerald-300 text-emerald-900",
+                question: "Além de permitir a divulgação de músicas, como as redes sociais contribuem para a experiência musical dos usuários?",
+                options: [
+                    "Impedem o contato com artistas desconhecidos.",
+                    "Facilitam a descoberta de artistas e a troca de preferências musicais.",
+                    "Substituem todas as plataformas de streaming.",
+                    "Garantem que todas as músicas compartilhadas sejam gratuitas.",
+                    "Eliminam a necessidade de respeitar direitos autorais."
+                ],
+                correctIndex: 1,
+                explanation: "As redes sociais conectam ouvintes e criadores, favorecendo recomendações, tendências e a descoberta de novos estilos e artistas independentes."
+            },
+            {
+                part: "III",
+                partTitle: "PARTE III – COMPARTILHAMENTO DE MÚSICAS PREFERIDAS",
+                badgeStyle: "bg-emerald-100 border-emerald-300 text-emerald-900",
+                question: "Um estudante publica em sua rede social uma música completa que possui direitos autorais, sem autorização do titular e fora das condições permitidas pela plataforma. Qual questão está envolvida nessa situação?",
+                options: [
+                    "Organização de playlists.",
+                    "Descoberta de novos gêneros musicais.",
+                    "Colaboração entre usuários.",
+                    "Utilização de conteúdo protegido sem autorização.",
+                    "Personalização de recomendações musicais."
+                ],
+                correctIndex: 3,
+                explanation: "Publicar obras protegidas na íntegra sem licença ou autorização viola a Lei de Direitos Autorais e as políticas das plataformas digitais."
+            }
+        ];
+
+        // ================= INICIALIZAÇÃO DO FIREBASE =================
+        const appId = typeof __app_id !== "undefined" ? __app_id : "quiz-9ano-aula";
+        const firebaseConfig = typeof __firebase_config !== "undefined" ? JSON.parse(__firebase_config) : null;
+
+        let db = null;
+        let auth = null;
+        let currentUser = null;
+
+        // ================= ESTADO GLOBAL DO QUIZ =================
+        const state = {
+            role: "teacher", // "teacher" | "student" | "solo"
+            roomCode: "",
+            roomModule: "ALL",
+            playerId: "",
+            playerName: "",
+            activeQuestions: [],
+            currentIndex: 0,
+            correctCount: 0,
+            wrongCount: 0,
+            hasAnswered: false,
+            quizStartTime: 0,
+            finalDurationMs: 0,
+            soundEnabled: true,
+            playersList: [],
+            unsubscribePlayers: null,
+            unsubscribeRoom: null
+        };
+
+        // ================= UTILITÁRIOS =================
+        function generateRoomCode() {
+            const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+            let code = "9A-";
+            for (let i = 0; i < 3; i++) {
+                code += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return code;
+        }
+
+        function shuffleArray(array) {
+            const copy = [...array];
+            for (let i = copy.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [copy[i], copy[j]] = [copy[j], copy[i]];
+            }
+            return copy;
+        }
+
+        function formatDuration(ms) {
+            if (!ms || ms <= 0) return "—";
+            const totalSec = Math.round(ms / 1000);
+            const mins = Math.floor(totalSec / 60);
+            const secs = totalSec % 60;
+            return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+        }
+
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function sortPlayers(players) {
+            return [...players].sort((a, b) => {
+                // 1º critério: maior número de acertos
+                if ((b.score || 0) !== (a.score || 0)) {
+                    return (b.score || 0) - (a.score || 0);
+                }
+                // 2º critério: quem já finalizou fica à frente em caso de empate
+                if (Boolean(b.finished) !== Boolean(a.finished)) {
+                    return b.finished ? 1 : -1;
+                }
+                // 3º critério: menor tempo total de resposta (ms)
+                const timeA = a.durationMs || Number.MAX_SAFE_INTEGER;
+                const timeB = b.durationMs || Number.MAX_SAFE_INTEGER;
+                if (timeA !== timeB) {
+                    return timeA - timeB;
+                }
+                return (a.joinedAt || 0) - (b.joinedAt || 0);
+            });
+        }
+
+        // ================= EFEITOS SONOROS =================
+        function toggleSound() {
+            state.soundEnabled = !state.soundEnabled;
+            document.getElementById("sound-icon").textContent = state.soundEnabled ? "🔊" : "🔇";
+            document.getElementById("sound-label").textContent = state.soundEnabled ? "Som Ligado" : "Som Mudo";
+        }
+
+        function playSound(type) {
+            if (!state.soundEnabled || typeof Tone === "undefined") return;
+            try {
+                if (Tone.context.state !== "running") {
+                    Tone.start();
+                }
+                const synth = new Tone.PolySynth(Tone.Synth, {
+                    volume: -8,
+                    oscillator: { type: "triangle" }
+                }).toDestination();
+
+                const now = Tone.now();
+                if (type === "correct") {
+                    synth.triggerAttackRelease("C5", "16n", now);
+                    synth.triggerAttackRelease("E5", "16n", now + 0.08);
+                    synth.triggerAttackRelease("G5", "8n", now + 0.16);
+                } else if (type === "wrong") {
+                    synth.triggerAttackRelease("E3", "8n", now);
+                    synth.triggerAttackRelease("Bb2", "4n", now + 0.14);
+                } else if (type === "finish") {
+                    synth.triggerAttackRelease(["C5", "E5", "G5", "C6"], "4n", now);
+                }
+            } catch (e) {
+                // Ignora bloqueio de áudio
+            }
+        }
+
+        // ================= CONTROLE DE TELAS =================
+        function hideAllSections() {
+            document.getElementById("teacher-dashboard").classList.add("hidden");
+            document.getElementById("student-join-screen").classList.add("hidden");
+            document.getElementById("quiz-screen").classList.add("hidden");
+            document.getElementById("result-screen").classList.add("hidden");
+        }
+
+        function checkLocalUrlWarning() {
+            const proto = window.location.protocol;
+            const host = window.location.hostname;
+            if (proto === "file:" || proto === "about:" || host === "localhost" || host === "127.0.0.1" || window.location.href.startsWith("blob:")) {
+                document.getElementById("local-url-warning").classList.remove("hidden");
+            }
+        }
+
+        // ================= FIRESTORE: SALA DO PROFESSOR =================
+        function getRoomDocRef(roomCode) {
+            return doc(db, "artifacts", appId, "public", "data", "quiz_9ano_rooms", roomCode);
+        }
+
+        function getPlayersCollectionRef(roomCode) {
+            return collection(db, "artifacts", appId, "public", "data", `quiz_9ano_players_${roomCode}`);
+        }
+
+        function getPlayerDocRef(roomCode, playerId) {
+            return doc(db, "artifacts", appId, "public", "data", `quiz_9ano_players_${roomCode}`, playerId);
+        }
+
+        async function setupTeacherRoom(roomCode) {
+            if (!currentUser || !db) return;
+            state.role = "teacher";
+            state.roomCode = roomCode.toUpperCase();
+
+            // Atualiza URL sem recarregar a página
+            try {
+                const url = new URL(window.location.href);
+                url.searchParams.set("room", state.roomCode);
+                url.searchParams.delete("role");
+                window.history.replaceState({}, "", url.toString());
+            } catch (e) {}
+
+            hideAllSections();
+            document.getElementById("teacher-dashboard").classList.remove("hidden");
+            document.getElementById("header-role-subtitle").textContent = `Projetor • Sala ${state.roomCode}`;
+            document.getElementById("teacher-room-code").textContent = state.roomCode;
+            checkLocalUrlWarning();
+
+            // Monta link direto para o celular do aluno
+            let studentUrl = "";
+            try {
+                const base = new URL(window.location.href);
+                base.searchParams.set("room", state.roomCode);
+                base.searchParams.set("role", "student");
+                studentUrl = base.toString();
+            } catch (e) {
+                studentUrl = `${window.location.origin}${window.location.pathname}?room=${state.roomCode}&role=student`;
+            }
+
+            document.getElementById("student-join-url-input").value = studentUrl;
+
+            // Gera QR Code nítido
+            const qrContainer = document.getElementById("qrcode-container");
+            qrContainer.innerHTML = "";
+            if (typeof QRCode !== "undefined") {
+                new QRCode(qrContainer, {
+                    text: studentUrl,
+                    width: 210,
+                    height: 210,
+                    colorDark: "#0f172a",
+                    colorLight: "#ffffff",
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+            }
+
+            // Cria/atualiza documento da sala no Firestore
+            const roomRef = getRoomDocRef(state.roomCode);
+            const snap = await getDoc(roomRef);
+            if (!snap.exists()) {
+                await setDoc(roomRef, {
+                    roomCode: state.roomCode,
+                    module: state.roomModule,
+                    createdAt: Date.now()
+                });
+            } else {
+                const data = snap.data();
+                state.roomModule = data.module || "ALL";
+                document.getElementById("teacher-module-select").value = state.roomModule;
+            }
+
+            // Ouve mudanças em tempo real nos jogadores da sala
+            listenToRoomPlayers(state.roomCode);
+        }
+
+        function listenToRoomPlayers(roomCode) {
+            if (state.unsubscribePlayers) {
+                state.unsubscribePlayers();
+            }
+
+            const playersCol = getPlayersCollectionRef(roomCode);
+            state.unsubscribePlayers = onSnapshot(
+                playersCol,
+                (snapshot) => {
+                    const list = [];
+                    snapshot.forEach((docSnap) => {
+                        list.push({ id: docSnap.id, ...docSnap.data() });
+                    });
+                    state.playersList = sortPlayers(list);
+                    renderTeacherLeaderboard();
+                    updateStudentLiveRankBanner();
+                },
+                (error) => {
+                    console.error("Erro ao sincronizar ranking:", error);
+                }
+            );
+        }
+
+        function renderTeacherLeaderboard() {
+            const sorted = state.playersList;
+            const totalStudents = sorted.length;
+            const finishedStudents = sorted.filter(p => p.finished).length;
+
+            document.getElementById("connected-students-count").textContent =
+                `${totalStudents} ${totalStudents === 1 ? "aluno" : "alunos"}`;
+            document.getElementById("finished-students-count").textContent =
+                `${finishedStudents} ${finishedStudents === 1 ? "concluído" : "concluídos"}`;
+
+            // Atualiza Top 3 no painel principal
+            [1, 2, 3].forEach((pos) => {
+                const player = sorted[pos - 1];
+                const nameEl = document.getElementById(`podium-${pos}-name`);
+                const statsEl = document.getElementById(`podium-${pos}-stats`);
+                if (player) {
+                    nameEl.textContent = player.name;
+                    const totalQ = player.totalQuestions || 20;
+                    const timeStr = player.finished ? ` • ${formatDuration(player.durationMs)}` : "";
+                    statsEl.textContent = `${player.score || 0}/${totalQ} acertos${timeStr}`;
+                } else {
+                    nameEl.textContent = "Aguardando...";
+                    statsEl.textContent = "—";
+                }
+            });
+
+            // Atualiza lista completa da turma
+            const listContainer = document.getElementById("students-leaderboard-list");
+            if (sorted.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="text-center py-10 px-4 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50">
+                        <div class="text-4xl mb-2">📱</div>
+                        <p class="text-slate-700 font-bold text-base sm:text-lg">Nenhum aluno conectado ainda</p>
+                        <p class="text-slate-500 text-sm mt-1">Peça para a turma ler o QR Code ao lado para começar!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            listContainer.innerHTML = sorted.map((p, idx) => {
+                const rank = idx + 1;
+                const totalQ = p.totalQuestions || 20;
+                const answered = p.answeredCount || 0;
+                const pctProgress = Math.min(100, Math.round((answered / totalQ) * 100));
+                const accuracy = answered > 0 ? Math.round(((p.score || 0) / answered) * 100) : 0;
+
+                let medal = `<span class="w-8 h-8 rounded-lg bg-slate-200 text-slate-800 font-black text-sm flex items-center justify-center">${rank}º</span>`;
+                if (rank === 1) medal = `<span class="text-2xl">🥇</span>`;
+                if (rank === 2) medal = `<span class="text-2xl">🥈</span>`;
+                if (rank === 3) medal = `<span class="text-2xl">🥉</span>`;
+
+                const statusBadge = p.finished
+                    ? `<span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-extrabold text-xs">Concluído • ${formatDuration(p.durationMs)}</span>`
+                    : `<span class="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 font-extrabold text-xs">Respondendo (${answered}/${totalQ})</span>`;
+
+                return `
+                    <div class="p-3.5 sm:p-4 rounded-2xl border ${rank === 1 ? "border-amber-400 bg-amber-50/50" : "border-slate-200 bg-slate-50"} flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <div class="shrink-0">${medal}</div>
+                            <div class="min-w-0">
+                                <div class="font-black text-slate-900 text-base sm:text-lg truncate">${escapeHtml(p.name)}</div>
+                                <div class="flex items-center gap-2 flex-wrap mt-0.5">
+                                    ${statusBadge}
+                                    <span class="text-xs font-bold text-slate-500">Aproveitamento: ${accuracy}%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-4 shrink-0">
+                            <div class="w-28 sm:w-32">
+                                <div class="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                                    <div class="h-full ${p.finished ? "bg-emerald-500" : "bg-blue-600"} transition-all duration-300" style="width: ${pctProgress}%"></div>
+                                </div>
+                            </div>
+                            <div class="text-right min-w-[76px]">
+                                <span class="text-xl font-black text-emerald-700">${p.score || 0}</span>
+                                <span class="text-xs font-bold text-slate-500">/${totalQ}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        async function changeRoomModule(newModule) {
+            state.roomModule = newModule;
+            if (!currentUser || !db || !state.roomCode) return;
+            await setDoc(getRoomDocRef(state.roomCode), {
+                roomCode: state.roomCode,
+                module: newModule,
+                updatedAt: Date.now()
+            }, { merge: true });
+        }
+
+        async function clearRoomPlayers() {
+            if (!currentUser || !db || !state.roomCode) return;
+            const playersCol = getPlayersCollectionRef(state.roomCode);
+            const snap = await getDocs(playersCol);
+            const deletions = [];
+            snap.forEach((d) => {
+                deletions.push(deleteDoc(d.ref));
+            });
+            await Promise.all(deletions);
+        }
+
+        function createNewRoom() {
+            const newCode = generateRoomCode();
+            setupTeacherRoom(newCode);
+        }
+
+        function copyJoinLink() {
+            const input = document.getElementById("student-join-url-input");
+            input.select();
+            input.setSelectionRange(0, 99999);
+            try {
+                document.execCommand("copy");
+                const btn = document.getElementById("copy-link-btn");
+                btn.textContent = "Copiado! ✓";
+                btn.classList.replace("bg-slate-900", "bg-emerald-600");
+                setTimeout(() => {
+                    btn.textContent = "Copiar Link";
+                    btn.classList.replace("bg-emerald-600", "bg-slate-900");
+                }, 2000);
+            } catch (e) {}
+        }
+
+        // ================= MODO ALUNO (CELULAR) =================
+        function showStudentJoinScreen(prefillRoom = "") {
+            state.role = "student";
+            hideAllSections();
+            document.getElementById("student-join-screen").classList.remove("hidden");
+            document.getElementById("header-role-subtitle").textContent = "Modo Aluno • Celular";
+            if (prefillRoom) {
+                document.getElementById("student-room-input").value = prefillRoom.toUpperCase();
+            }
+        }
+
+        async function handleStudentJoin(event) {
+            event.preventDefault();
+            const roomInput = document.getElementById("student-room-input").value.trim().toUpperCase();
+            const nameInput = document.getElementById("student-name-input").value.trim();
+            const errorBox = document.getElementById("student-join-error");
+            const submitBtn = document.getElementById("student-join-submit-btn");
+
+            errorBox.classList.add("hidden");
+
+            if (!roomInput || !nameInput) {
+                errorBox.textContent = "Por favor, preencha o código da sala e seu nome.";
+                errorBox.classList.remove("hidden");
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Entrando na sala...";
+
+            try {
+                state.roomCode = roomInput;
+                state.playerName = nameInput;
+                state.playerId = currentUser ? `${currentUser.uid}_${Date.now().toString(36)}` : `stu_${Date.now()}`;
+
+                // Busca módulo configurado pelo professor na sala
+                let selectedModule = "ALL";
+                if (currentUser && db) {
+                    const roomSnap = await getDoc(getRoomDocRef(state.roomCode));
+                    if (roomSnap.exists() && roomSnap.data().module) {
+                        selectedModule = roomSnap.data().module;
+                    }
+                }
+                state.roomModule = selectedModule;
+
+                const filtered = selectedModule === "ALL"
+                    ? ALL_QUESTIONS
+                    : ALL_QUESTIONS.filter(q => q.part === selectedModule);
+
+                // Embaralha questões para cada celular
+                state.activeQuestions = shuffleArray(filtered);
+                state.currentIndex = 0;
+                state.correctCount = 0;
+                state.wrongCount = 0;
+                state.hasAnswered = false;
+                state.quizStartTime = Date.now();
+
+                // Registra aluno no Firestore
+                if (currentUser && db) {
+                    await setDoc(getPlayerDocRef(state.roomCode, state.playerId), {
+                        name: state.playerName,
+                        score: 0,
+                        wrong: 0,
+                        answeredCount: 0,
+                        totalQuestions: state.activeQuestions.length,
+                        finished: false,
+                        durationMs: 0,
+                        joinedAt: Date.now()
+                    });
+                    listenToRoomPlayers(state.roomCode);
+                }
+
+                // Abre a tela de questões
+                hideAllSections();
+                document.getElementById("quiz-screen").classList.remove("hidden");
+                const pill = document.getElementById("player-pill");
+                pill.textContent = `👤 ${state.playerName} • Sala ${state.roomCode}`;
+                pill.classList.remove("hidden");
+
+                renderQuestion();
+            } catch (err) {
+                console.error(err);
+                errorBox.textContent = "Não foi possível conectar à sala. Verifique sua internet e tente novamente.";
+                errorBox.classList.remove("hidden");
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = `<span>Entrar no Quiz 🚀</span>`;
+            }
+        }
+
+        function updateStudentLiveRankBanner() {
+            if (state.role !== "student" || !state.playerId) return;
+            const banner = document.getElementById("student-live-rank-banner");
+            if (banner.classList.contains("hidden")) return;
+
+            const idx = state.playersList.findIndex(p => p.id === state.playerId);
+            if (idx === -1) return;
+
+            const pos = idx + 1;
+            const total = state.playersList.length;
+            const medals = { 1: "🥇", 2: "🥈", 3: "🥉" };
+            const icon = medals[pos] || "🏅";
+
+            document.getElementById("student-live-rank-text").textContent = `${pos}º Lugar! ${icon}`;
+            document.getElementById("student-live-rank-sub").textContent =
+                `Entre ${total} ${total === 1 ? "participante conectado" : "participantes conectados"} na sala ${state.roomCode}`;
+        }
+
+        // ================= MODO PROJEÇÃO DIRETA (SOLO SEM CELULAR) =================
+        function startSoloProjectorMode() {
+            closeModeSwitcher();
+            state.role = "solo";
+            const moduleVal = document.getElementById("teacher-module-select")?.value || "ALL";
+            state.roomModule = moduleVal;
+
+            const filtered = moduleVal === "ALL"
+                ? ALL_QUESTIONS
+                : ALL_QUESTIONS.filter(q => q.part === moduleVal);
+
+            state.activeQuestions = shuffleArray(filtered);
+            state.currentIndex = 0;
+            state.correctCount = 0;
+            state.wrongCount = 0;
+            state.hasAnswered = false;
+            state.quizStartTime = Date.now();
+
+            hideAllSections();
+            document.getElementById("player-pill").classList.add("hidden");
+            document.getElementById("quiz-screen").classList.remove("hidden");
+            document.getElementById("header-role-subtitle").textContent = "Projeção Direta (Sem Celulares)";
+
+            renderQuestion();
+        }
+
+        function restartSoloQuiz() {
+            startSoloProjectorMode();
+        }
+
+        // ================= RENDERIZAÇÃO E RESPOSTA DAS QUESTÕES =================
+        function renderQuestion() {
+            state.hasAnswered = false;
+            const q = state.activeQuestions[state.currentIndex];
+            const total = state.activeQuestions.length;
+            const seqNumber = state.currentIndex + 1;
+
+            const sectionBadge = document.getElementById("section-badge");
+            sectionBadge.textContent = q.partTitle;
+            sectionBadge.className = `px-3.5 py-1 rounded-xl border font-extrabold text-xs sm:text-sm ${q.badgeStyle}`;
+
+            document.getElementById("score-correct").textContent = state.correctCount;
+            document.getElementById("score-wrong").textContent = state.wrongCount;
+            document.getElementById("question-counter").textContent = `${seqNumber} / ${total}`;
+
+            const progressPercent = (seqNumber / total) * 100;
+            document.getElementById("progress-bar").style.width = `${progressPercent}%`;
+
+            const card = document.getElementById("question-card");
+            card.classList.remove("animate-slide-up");
+            void card.offsetWidth;
+            card.classList.add("animate-slide-up");
+
+            // Numeração Dinâmica Sequencial (1., 2., 3...)
+            document.getElementById("question-text").textContent = `${seqNumber}. ${q.question}`;
+
+            document.getElementById("feedback-box").classList.add("hidden");
+            document.getElementById("next-btn-container").classList.add("hidden");
+
+            const container = document.getElementById("options-container");
+            container.innerHTML = "";
+
+            q.options.forEach((optText, idx) => {
+                const letter = LETTERS[idx];
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.id = `option-${idx}`;
+                btn.onclick = () => handleAnswer(idx);
+                btn.className = "option-btn w-full text-left p-4 sm:p-5 rounded-2xl border-2 border-slate-300 bg-slate-50/90 hover:bg-blue-50/70 hover:border-blue-500 transition-all duration-200 flex items-center justify-between gap-3.5 group cursor-pointer active:scale-[0.99]";
+
+                btn.innerHTML = `
+                    <div class="flex items-center gap-3.5 sm:gap-5">
+                        <span id="badge-${idx}" class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-slate-200 group-hover:bg-blue-600 text-slate-900 group-hover:text-white font-black text-lg sm:text-2xl flex items-center justify-center shrink-0 transition-colors">
+                            ${letter}
+                        </span>
+                        <span id="opt-text-${idx}" class="text-base sm:text-xl font-semibold text-slate-800 leading-snug">
+                            ${optText}
+                        </span>
+                    </div>
+                    <span id="status-icon-${idx}" class="text-2xl font-black shrink-0"></span>
+                `;
+
+                container.appendChild(btn);
+            });
+        }
+
+        async function handleAnswer(chosenIdx) {
+            if (state.hasAnswered) return;
+            state.hasAnswered = true;
+
+            const q = state.activeQuestions[state.currentIndex];
+            const isCorrect = chosenIdx === q.correctIndex;
+
+            const allBtns = document.querySelectorAll(".option-btn");
+            allBtns.forEach(btn => {
+                btn.disabled = true;
+                btn.classList.remove("hover:bg-blue-50/70", "hover:border-blue-500", "cursor-pointer");
+                btn.classList.add("cursor-default");
+            });
+
+            const chosenBtn = document.getElementById(`option-${chosenIdx}`);
+            const chosenBadge = document.getElementById(`badge-${chosenIdx}`);
+            const chosenText = document.getElementById(`opt-text-${chosenIdx}`);
+            const chosenIcon = document.getElementById(`status-icon-${chosenIdx}`);
+
+            const correctBtn = document.getElementById(`option-${q.correctIndex}`);
+            const correctBadge = document.getElementById(`badge-${q.correctIndex}`);
+            const correctText = document.getElementById(`opt-text-${q.correctIndex}`);
+            const correctIcon = document.getElementById(`status-icon-${q.correctIndex}`);
+
+            q.options.forEach((_, idx) => {
+                if (idx !== chosenIdx && idx !== q.correctIndex) {
+                    document.getElementById(`option-${idx}`).classList.add("opacity-50");
+                }
+            });
+
+            const feedbackBox = document.getElementById("feedback-box");
+            const feedbackIcon = document.getElementById("feedback-icon");
+            const feedbackTitle = document.getElementById("feedback-title");
+            const feedbackComment = document.getElementById("feedback-comment");
+
+            if (isCorrect) {
+                state.correctCount++;
+                document.getElementById("score-correct").textContent = state.correctCount;
+
+                chosenBtn.classList.remove("border-slate-300", "bg-slate-50/90");
+                chosenBtn.classList.add("bg-[#dcfce7]", "border-[#16a34a]", "shadow-md", "animate-pop-success");
+                chosenBadge.classList.remove("bg-slate-200", "group-hover:bg-blue-600", "text-slate-900");
+                chosenBadge.classList.add("bg-[#16a34a]", "text-white");
+                chosenText.classList.remove("text-slate-800");
+                chosenText.classList.add("text-emerald-950", "font-bold");
+                chosenIcon.innerHTML = `<span class="inline-flex items-center justify-center w-9 h-9 rounded-full bg-[#16a34a] text-white">✓</span>`;
+
+                feedbackBox.className = "mt-6 rounded-2xl p-4 sm:p-6 border-2 border-[#16a34a] bg-[#dcfce7]/70 animate-slide-up";
+                feedbackIcon.className = "w-11 h-11 rounded-2xl bg-[#16a34a] text-white flex items-center justify-center shrink-0 text-xl font-black";
+                feedbackIcon.textContent = "✓";
+                feedbackTitle.className = "text-base sm:text-xl font-black text-emerald-900 mb-1";
+                feedbackTitle.textContent = "Resposta Correta!";
+                feedbackComment.className = "text-sm sm:text-lg text-emerald-950 font-medium leading-relaxed";
+                feedbackComment.textContent = q.explanation;
+
+                playSound("correct");
+
+                if (typeof confetti === "function") {
+                    const rect = chosenBtn.getBoundingClientRect();
+                    confetti({
+                        particleCount: 35,
+                        spread: 50,
+                        origin: {
+                            x: (rect.left + rect.width / 2) / window.innerWidth,
+                            y: (rect.top + rect.height / 2) / window.innerHeight
+                        },
+                        colors: ["#16a34a", "#2563eb", "#f59e0b"]
+                    });
+                }
+            } else {
+                state.wrongCount++;
+                document.getElementById("score-wrong").textContent = state.wrongCount;
+
+                chosenBtn.classList.remove("border-slate-300", "bg-slate-50/90");
+                chosenBtn.classList.add("bg-[#fee2e2]", "border-[#dc2626]", "animate-shake");
+                chosenBadge.classList.remove("bg-slate-200", "group-hover:bg-blue-600", "text-slate-900");
+                chosenBadge.classList.add("bg-[#dc2626]", "text-white");
+                chosenText.classList.remove("text-slate-800");
+                chosenText.classList.add("text-rose-950", "font-bold");
+                chosenIcon.innerHTML = `<span class="inline-flex items-center justify-center w-9 h-9 rounded-full bg-[#dc2626] text-white">✕</span>`;
+
+                correctBtn.classList.remove("border-slate-300", "bg-slate-50/90");
+                correctBtn.classList.add("bg-[#dcfce7]", "border-[#16a34a]", "shadow-md");
+                correctBadge.classList.remove("bg-slate-200", "group-hover:bg-blue-600", "text-slate-900");
+                correctBadge.classList.add("bg-[#16a34a]", "text-white");
+                correctText.classList.remove("text-slate-800");
+                correctText.classList.add("text-emerald-950", "font-bold");
+                correctIcon.innerHTML = `<span class="inline-flex items-center justify-center w-9 h-9 rounded-full bg-[#16a34a] text-white">✓</span>`;
+
+                feedbackBox.className = "mt-6 rounded-2xl p-4 sm:p-6 border-2 border-[#dc2626] bg-[#fee2e2]/65 animate-slide-up";
+                feedbackIcon.className = "w-11 h-11 rounded-2xl bg-[#dc2626] text-white flex items-center justify-center shrink-0 text-xl font-black";
+                feedbackIcon.textContent = "!";
+                feedbackTitle.className = "text-base sm:text-xl font-black text-rose-900 mb-1";
+                feedbackTitle.textContent = `Incorreta! A certa é a letra ${LETTERS[q.correctIndex]}.`;
+                feedbackComment.className = "text-sm sm:text-lg text-slate-900 font-medium leading-relaxed";
+                feedbackComment.textContent = q.explanation;
+
+                playSound("wrong");
+            }
+
+            // Sincroniza progresso imediato do aluno no Firestore para o telão do professor
+            const answeredCount = state.currentIndex + 1;
+            const isLast = answeredCount === state.activeQuestions.length;
+            const elapsed = Date.now() - state.quizStartTime;
+            if (isLast) {
+                state.finalDurationMs = elapsed;
+            }
+
+            if (state.role === "student" && currentUser && db && state.roomCode && state.playerId) {
+                try {
+                    await updateDoc(getPlayerDocRef(state.roomCode, state.playerId), {
+                        score: state.correctCount,
+                        wrong: state.wrongCount,
+                        answeredCount: answeredCount,
+                        finished: isLast,
+                        durationMs: isLast ? elapsed : 0
+                    });
+                } catch (e) {
+                    console.error("Erro ao atualizar pontuação:", e);
+                }
+            }
+
+            const nextBtnContainer = document.getElementById("next-btn-container");
+            const nextBtnText = document.getElementById("next-btn-text");
+            nextBtnText.textContent = isLast ? "Ver Meu Resultado Final →" : "Próxima Questão →";
+            nextBtnContainer.classList.remove("hidden");
+        }
+
+        function nextQuestion() {
+            if (state.currentIndex < state.activeQuestions.length - 1) {
+                state.currentIndex++;
+                renderQuestion();
+            } else {
+                showFinalResult();
+            }
+        }
+
+        function showFinalResult() {
+            hideAllSections();
+            document.getElementById("result-screen").classList.remove("hidden");
+
+            const total = state.activeQuestions.length;
+            const percent = Math.round((state.correctCount / total) * 100);
+            const duration = state.finalDurationMs || (Date.now() - state.quizStartTime);
+
+            document.getElementById("final-correct").textContent = state.correctCount;
+            document.getElementById("final-wrong").textContent = state.wrongCount;
+            document.getElementById("final-percent").textContent = `${percent}%`;
+            document.getElementById("final-time").textContent = formatDuration(duration);
+
+            const rankBanner = document.getElementById("student-live-rank-banner");
+            const soloRestartBtn = document.getElementById("solo-restart-btn");
+
+            if (state.role === "student") {
+                document.getElementById("result-heading").textContent = `Parabéns, ${state.playerName}!`;
+                document.getElementById("result-subtitle").textContent =
+                    "Sua pontuação já está no telão do professor. Acompanhe o pódio final na lousa!";
+                rankBanner.classList.remove("hidden");
+                soloRestartBtn.classList.add("hidden");
+                updateStudentLiveRankBanner();
+            } else {
+                document.getElementById("result-heading").textContent = "Revisão Concluída!";
+                document.getElementById("result-subtitle").textContent = "Confira o aproveitamento geral da turma:";
+                rankBanner.classList.add("hidden");
+                soloRestartBtn.classList.remove("hidden");
+            }
+
+            playSound("finish");
+
+            if (percent >= 70 && typeof confetti === "function") {
+                confetti({
+                    particleCount: 80,
+                    spread: 75,
+                    origin: { y: 0.6 }
+                });
+            }
+        }
+
+        // ================= MODAIS E NAVEGAÇÃO =================
+        function openFinalPodiumModal() {
+            const sorted = state.playersList;
+            [1, 2, 3].forEach((pos) => {
+                const p = sorted[pos - 1];
+                const nameEl = document.getElementById(`modal-podium-${pos}-name`);
+                const scoreEl = document.getElementById(`modal-podium-${pos}-score`);
+                const timeEl = document.getElementById(`modal-podium-${pos}-time`);
+                if (p) {
+                    nameEl.textContent = p.name;
+                    scoreEl.textContent = `${p.score || 0} / ${p.totalQuestions || 20} acertos`;
+                    timeEl.textContent = p.finished ? `Tempo: ${formatDuration(p.durationMs)}` : "Em andamento";
+                } else {
+                    nameEl.textContent = "—";
+                    scoreEl.textContent = "0 acertos";
+                    timeEl.textContent = "—";
+                }
+            });
+
+            document.getElementById("podium-modal").classList.remove("hidden");
+            playSound("finish");
+            firePodiumConfetti();
+        }
+
+        function firePodiumConfetti() {
+            if (typeof confetti === "function") {
+                confetti({ particleCount: 110, spread: 90, origin: { y: 0.55 } });
+            }
+        }
+
+        function closePodiumModal() {
+            document.getElementById("podium-modal").classList.add("hidden");
+        }
+
+        function openModeSwitcher() {
+            document.getElementById("mode-modal").classList.remove("hidden");
+        }
+
+        function closeModeSwitcher() {
+            document.getElementById("mode-modal").classList.add("hidden");
+        }
+
+        function switchToTeacher() {
+            closeModeSwitcher();
+            const code = state.roomCode || generateRoomCode();
+            setupTeacherRoom(code);
+        }
+
+        function switchToStudent() {
+            closeModeSwitcher();
+            showStudentJoinScreen(state.roomCode);
+        }
+
+        function backToTeacherDashboard() {
+            const code = state.roomCode || generateRoomCode();
+            setupTeacherRoom(code);
+        }
+
+        // Atalho de teclado Enter / Espaço para avançar questão
+        document.addEventListener("keydown", (event) => {
+            const quizVisible = !document.getElementById("quiz-screen").classList.contains("hidden");
+            const modeVisible = !document.getElementById("mode-modal").classList.contains("hidden");
+            if (quizVisible && !modeVisible && state.hasAnswered) {
+                if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    nextQuestion();
+                }
+            }
+        });
+
+        // ================= BOOTSTRAP E AUTENTICAÇÃO ANÔNIMA =================
+        async function initApp() {
+            try {
+                if (firebaseConfig) {
+                    const app = initializeApp(firebaseConfig);
+                    auth = getAuth(app);
+                    db = getFirestore(app);
+
+                    if (typeof __initial_auth_token !== "undefined" && __initial_auth_token) {
+                        const cred = await signInWithCustomToken(auth, __initial_auth_token);
+                        currentUser = cred.user;
+                    } else {
+                        const cred = await signInAnonymously(auth);
+                        currentUser = cred.user;
+                    }
+                }
+            } catch (e) {
+                console.error("Erro na autenticação:", e);
+            }
+
+            // Verifica parâmetros da URL (?room=XXXX&role=student)
+            const params = new URLSearchParams(window.location.search);
+            const urlRoom = params.get("room");
+            const urlRole = params.get("role");
+
+            if (urlRole === "student") {
+                showStudentJoinScreen(urlRoom || "");
+            } else {
+                const initialRoom = urlRoom ? urlRoom.toUpperCase() : generateRoomCode();
+                await setupTeacherRoom(initialRoom);
+            }
+        }
+
+        // Expõe métodos para eventos inline no HTML
+        window.app = {
+            toggleSound,
+            createNewRoom,
+            copyJoinLink,
+            changeRoomModule,
+            clearRoomPlayers,
+            openFinalPodiumModal,
+            firePodiumConfetti,
+            closePodiumModal,
+            openModeSwitcher,
+            closeModeSwitcher,
+            switchToTeacher,
+            switchToStudent,
+            startSoloProjectorMode,
+            restartSoloQuiz,
+            backToTeacherDashboard,
+            handleStudentJoin,
+            nextQuestion
+        };
+
+        initApp();
+    </script>
+</body>
+</html>
